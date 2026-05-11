@@ -1,27 +1,29 @@
-const productName = 'Input Pilot';
-
 export default {
+  failed: '操作失败',
+  success: '操作成功',
+
   components: {
     navigations: {
       main: {
-        dashboard: 'Dashboard',
+        dashboard: '仪表盘',
       },
       stack: {
-        about: 'About',
-        settings: 'Settings',
+        about: '关于',
+        settings: '设置',
       },
     },
     ThemeButton: {
       labels: {
-        switchTheme: 'Switch Theme',
+        switchTheme: '切换主题',
       },
     },
   },
+
   layouts: {
     headers: {
       MainHeader: {
         labels: {
-          title: productName,
+          title: 'Input Pilot',
         },
       },
     },
