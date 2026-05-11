@@ -12,9 +12,27 @@ const i18n = i18nSubPath('components.navigations');
 export const MAIN_NAVIGATIONS: Navigation[] = [
   {
     label: i18n('main.dashboard'),
-    icon: 'folder_open',
+    icon: 'dashboard',
     available: true,
     route: 'dashboard',
+  },
+  {
+    label: i18n('main.macros'),
+    icon: 'play_circle',
+    available: true,
+    route: 'macros',
+  },
+  {
+    label: i18n('main.targets'),
+    icon: 'ads_click',
+    available: true,
+    route: 'targets',
+  },
+  {
+    label: i18n('main.windows'),
+    icon: 'window',
+    available: true,
+    route: 'windows',
   },
 ];
 

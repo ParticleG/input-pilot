@@ -6,6 +6,9 @@ export default {
     navigations: {
       main: {
         dashboard: '仪表盘',
+        macros: '宏',
+        targets: '目标',
+        windows: '窗口',
       },
       stack: {
         about: '关于',

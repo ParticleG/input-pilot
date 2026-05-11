@@ -23,6 +23,33 @@ const routes: RouteRecordRaw[] = [
           header: () => import('layouts/headers/MainHeader.vue'),
         },
       },
+      {
+        name: 'macros',
+        path: 'macros',
+        components: {
+          default: () => import('pages/main/MacrosPage.vue'),
+          leftDrawer: () => import('layouts/drawers/MainLeftDrawer.vue'),
+          header: () => import('layouts/headers/MainHeader.vue'),
+        },
+      },
+      {
+        name: 'targets',
+        path: 'targets',
+        components: {
+          default: () => import('pages/main/TargetsPage.vue'),
+          leftDrawer: () => import('layouts/drawers/MainLeftDrawer.vue'),
+          header: () => import('layouts/headers/MainHeader.vue'),
+        },
+      },
+      {
+        name: 'windows',
+        path: 'windows',
+        components: {
+          default: () => import('pages/main/WindowsPage.vue'),
+          leftDrawer: () => import('layouts/drawers/MainLeftDrawer.vue'),
+          header: () => import('layouts/headers/MainHeader.vue'),
+        },
+      },
     ],
   },
   // Always leave this as last one,

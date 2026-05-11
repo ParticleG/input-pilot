@@ -5,6 +5,9 @@ export default {
     navigations: {
       main: {
         dashboard: 'Dashboard',
+        macros: 'Macros',
+        targets: 'Targets',
+        windows: 'Windows',
       },
       stack: {
         about: 'About',
