@@ -152,7 +152,10 @@ async function toggleDaemon() {
       <q-list separator>
         <q-item v-for="hk in app.hotkeys" :key="hk.id">
           <q-item-section avatar>
-            <q-icon name="keyboard" />
+            <q-icon
+              :name="app.hotkeyStates[hk.id] ? 'play_circle' : 'keyboard'"
+              :color="app.hotkeyStates[hk.id] ? 'positive' : undefined"
+            />
           </q-item-section>
           <q-item-section>
             <q-item-label>{{ hk.description }}</q-item-label>
@@ -162,7 +165,13 @@ async function toggleDaemon() {
             </q-item-label>
           </q-item-section>
           <q-item-section side>
-            <q-chip dense color="primary" text-color="white">{{ hk.trigger_mode }}</q-chip>
+            <q-chip
+              dense
+              :color="app.hotkeyStates[hk.id] ? 'positive' : 'primary'"
+              text-color="white"
+            >
+              {{ app.hotkeyStates[hk.id] ? 'Active' : hk.trigger_mode }}
+            </q-chip>
           </q-item-section>
         </q-item>
       </q-list>

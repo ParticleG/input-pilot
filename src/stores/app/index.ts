@@ -1,7 +1,9 @@
 import { defineStore, acceptHMRUpdate } from 'pinia';
 import { ref, computed, watch } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import type { AppConfig, MacroSequence, TargetSpec, HotkeyBinding, WindowMatch } from 'src/types';
+import { listen } from '@tauri-apps/api/event';
+import { Notify } from 'quasar';
+import type { AppConfig, MacroSequence, TargetSpec, HotkeyBinding, HotkeyStateEvent, WindowMatch } from 'src/types';
 
 export const useAppStore = defineStore(
   'app',
@@ -21,6 +23,9 @@ export const useAppStore = defineStore(
     const loading = ref(false);
     const error = ref<string | null>(null);
     const daemonRunning = ref(false);
+
+    /** Reactive map of hotkey id → active state (for Toggle/Hold/Phased indicators) */
+    const hotkeyStates = ref<Record<number, boolean>>({});
 
     // -----------------------------------------------------------------------
     // Computed
@@ -211,6 +216,46 @@ export const useAppStore = defineStore(
       }
     }
 
+    // -----------------------------------------------------------------------
+    // Hotkey state event listener
+    // -----------------------------------------------------------------------
+    function setupHotkeyStateListener() {
+      void listen<HotkeyStateEvent>('hotkey-state', (event) => {
+        const { id, active, description, trigger_mode } = event.payload;
+        hotkeyStates.value[id] = active;
+
+        const label = description || `Hotkey #${id}`;
+        if (trigger_mode === 'Once') {
+          Notify.create({
+            message: `${label} executed`,
+            color: 'positive',
+            position: 'bottom-right',
+            timeout: 1500,
+            icon: 'play_arrow',
+          });
+        } else if (active) {
+          Notify.create({
+            message: `${label} started`,
+            color: 'positive',
+            position: 'bottom-right',
+            timeout: 2000,
+            icon: 'play_arrow',
+          });
+        } else {
+          Notify.create({
+            message: `${label} stopped`,
+            color: 'warning',
+            position: 'bottom-right',
+            timeout: 2000,
+            icon: 'stop',
+          });
+        }
+      });
+    }
+
+    // Start listening immediately
+    setupHotkeyStateListener();
+
     return {
       // State
       targets,
@@ -222,6 +267,7 @@ export const useAppStore = defineStore(
       error,
       syncing,
       daemonRunning,
+      hotkeyStates,
       // Computed
       targetCount,
       macroCount,

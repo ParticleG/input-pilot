@@ -42,6 +42,13 @@ export interface HotkeyBinding {
   description: string;
 }
 
+export interface HotkeyStateEvent {
+  id: number;
+  active: boolean;
+  description: string;
+  trigger_mode: string;
+}
+
 export interface AppConfig {
   targets: Record<string, TargetSpec>;
   macros: Record<string, MacroSequence>;

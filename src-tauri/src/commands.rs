@@ -1,4 +1,5 @@
-use tauri::State;
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, State};
 use parking_lot::Mutex;
 
 use crate::model::app_config::AppConfig;
@@ -156,7 +157,12 @@ pub fn serialize_macro_to_text(macro_seq: MacroSequence) -> Vec<String> {
 
 /// Start the hotkey daemon (registers hotkeys, begins listening)
 #[tauri::command]
-pub fn start_hotkey_daemon(state: State<'_, AppState>) -> Result<bool, String> {
+pub fn start_hotkey_daemon(app: AppHandle, state: State<'_, AppState>) -> Result<bool, String> {
+    // Set up the event emitter callback before starting
+    let app_handle = app.clone();
+    state.daemon.set_state_callback(Arc::new(move |event| {
+        let _ = app_handle.emit("hotkey-state", &event);
+    }));
     Ok(state.daemon.start())
 }
 

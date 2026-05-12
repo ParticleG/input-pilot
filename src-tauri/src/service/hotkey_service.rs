@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use parking_lot::Mutex;
 use windows::Win32::Foundation::*;
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
@@ -27,6 +28,8 @@ pub struct HotkeyService {
     target_hwnd: HWND,
     pressed_keys: Mutex<HashSet<u32>>,
     active_hotkeys: Mutex<HashSet<i32>>,
+    /// Epoch millis of the last keyboard hook callback. Used to detect silent hook removal.
+    last_hook_activity: AtomicU64,
 }
 
 static mut HOTKEY_INSTANCE: Option<*const HotkeyService> = None;
@@ -40,6 +43,7 @@ impl HotkeyService {
             target_hwnd,
             pressed_keys: Mutex::new(HashSet::new()),
             active_hotkeys: Mutex::new(HashSet::new()),
+            last_hook_activity: AtomicU64::new(0),
         }
     }
 
@@ -143,7 +147,14 @@ impl HotkeyService {
             if let Some(instance_ptr) = HOTKEY_INSTANCE {
                 let instance = &*instance_ptr;
                 let kb = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
-                
+
+                // Record activity timestamp for hook health monitoring
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                instance.last_hook_activity.store(now, AtomicOrdering::Relaxed);
+
                 // Filter injected events
                 if (kb.flags & LLKHF_INJECTED).0 != 0 {
                     return CallNextHookEx(None, ncode, wparam, lparam);
@@ -231,6 +242,77 @@ impl HotkeyService {
 
     pub fn find_hotkey_by_id(&self, id: i32) -> Option<&HotkeyBinding> {
         self.registered_hotkeys.iter().find(|h| h.id == id)
+    }
+
+    /// Check if the LL hook should be active but may have been silently removed by Windows.
+    /// This can happen if the hook thread was briefly unresponsive.
+    /// Call this periodically from the daemon message loop.
+    /// Returns true if the hook was reinstalled.
+    pub fn ensure_hook_alive(&mut self) -> bool {
+        // Only relevant if we have hook bindings registered
+        if self.hook_bindings.is_empty() || self.hook.0.is_null() {
+            return false;
+        }
+
+        // If the hook was installed recently (< 10s), don't check yet —
+        // the user might simply not be pressing any keys.
+        let last_activity = self.last_hook_activity.load(AtomicOrdering::Relaxed);
+        if last_activity == 0 {
+            // Hook was just installed, set initial timestamp and skip
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            self.last_hook_activity.store(now, AtomicOrdering::Relaxed);
+            return false;
+        }
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+
+        // If no hook activity for 30 seconds, proactively reinstall.
+        // Normal keyboard activity (even just modifier keys from focus changes)
+        // should trigger the hook much more frequently than this.
+        if now.saturating_sub(last_activity) < 30_000 {
+            return false;
+        }
+
+        log::warn!("[HotkeyService] No hook activity for 30s — reinstalling LL hook");
+
+        // Unhook the (possibly dead) old hook
+        unsafe {
+            let _ = UnhookWindowsHookEx(self.hook);
+            self.hook = NULL_HOOK;
+            HOTKEY_INSTANCE = None;
+        }
+
+        // Reinstall
+        unsafe {
+            HOTKEY_INSTANCE = Some(self as *const _);
+            let hinstance = GetModuleHandleW(None).ok().map(|h| h.into());
+
+            self.hook = SetWindowsHookExW(
+                WH_KEYBOARD_LL,
+                Some(Self::keyboard_hook_proc),
+                hinstance,
+                0,
+            ).unwrap_or(NULL_HOOK);
+
+            if self.hook.0.is_null() {
+                log::error!("[HotkeyService] Failed to reinstall keyboard hook!");
+                HOTKEY_INSTANCE = None;
+                return false;
+            }
+            log::info!("[HotkeyService] LL keyboard hook reinstalled successfully");
+        }
+
+        // Clear stale key state since we missed events while hook was dead
+        self.pressed_keys.lock().clear();
+        self.active_hotkeys.lock().clear();
+        self.last_hook_activity.store(now, AtomicOrdering::Relaxed);
+        true
     }
 }
 

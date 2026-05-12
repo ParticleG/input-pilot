@@ -6,13 +6,34 @@ use windows::Win32::Foundation::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 use crate::model::app_config::AppConfig;
-use crate::model::hotkey_binding::HotkeyActionType;
+use crate::model::hotkey_binding::{HotkeyActionType, HotkeyBinding};
 use crate::model::macro_sequence::MacroSequence;
 use super::hotkey_service::{HotkeyService, WM_HOTKEY_DOWN, WM_HOTKEY_UP};
-use super::macro_runner::MacroRunner;
+use super::macro_runner::{MacroRunner, StateCallback};
 use super::macro_repository::MacroRepository;
 use super::recorder_service::{RecorderOptions, RecorderService};
 use super::macro_serialization;
+
+/// Compare two hotkey binding lists for equality on registration-relevant fields.
+/// Avoids unnecessary hook teardown/reinstall when unrelated config fields change.
+fn hotkeys_equal(a: &[HotkeyBinding], b: &[HotkeyBinding]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b.iter()).all(|(x, y)| {
+        x.id == y.id
+            && x.modifiers == y.modifiers
+            && x.virtual_key == y.virtual_key
+            && x.trigger_mode == y.trigger_mode
+            && x.action == y.action
+            && x.macro_name == y.macro_name
+            && x.file_path == y.file_path
+            && x.target_name == y.target_name
+            && x.dispatch_mode == y.dispatch_mode
+            && x.has_dispatch_override == y.has_dispatch_override
+            && x.repeat_delay_ms == y.repeat_delay_ms
+    })
+}
 
 /// The hotkey daemon runs a Win32 message loop on a dedicated thread,
 /// dispatching hotkey events to the MacroRunner.
@@ -22,6 +43,8 @@ pub struct HotkeyDaemon {
     thread_handle: Mutex<Option<thread::JoinHandle<()>>>,
     /// The HWND of the daemon's message-only window, stored as isize for Send safety.
     thread_hwnd: Arc<AtomicIsize>,
+    /// Callback for hotkey state changes (forwarded to MacroRunner).
+    state_callback: Mutex<Option<StateCallback>>,
 }
 
 // Safety: HotkeyDaemon only stores the HWND as an atomic isize.
@@ -48,20 +71,34 @@ impl HotkeyDaemon {
             running: Arc::new(AtomicBool::new(false)),
             thread_handle: Mutex::new(None),
             thread_hwnd: Arc::new(AtomicIsize::new(0)),
+            state_callback: Mutex::new(None),
         }
     }
 
-    /// Update the config. If the daemon is running, it will reload hotkeys.
+    /// Set the callback that will be invoked on hotkey state changes.
+    /// Must be called before `start()`.
+    pub fn set_state_callback(&self, callback: StateCallback) {
+        *self.state_callback.lock() = Some(callback);
+    }
+
+    /// Update the config. If the daemon is running, it will reload hotkeys
+    /// only when the hotkey bindings actually changed.
     pub fn update_config(&self, config: AppConfig) {
         let recordings_dir = config.recordings_directory.clone();
+        let hotkeys_changed;
         {
             let mut inner = self.inner.lock();
+            // Compare hotkey-relevant fields to decide if a reload is needed
+            hotkeys_changed = match &inner.config {
+                Some(old) => !hotkeys_equal(&old.hotkeys, &config.hotkeys),
+                None => true,
+            };
             inner.config = Some(config);
             inner.recordings_directory = recordings_dir;
         }
 
-        // Signal the daemon thread to reload
-        if self.running.load(Ordering::Relaxed) {
+        // Signal the daemon thread to reload only if hotkeys changed
+        if hotkeys_changed && self.running.load(Ordering::Relaxed) {
             let hwnd_val = self.thread_hwnd.load(Ordering::Relaxed);
             if hwnd_val != 0 {
                 let hwnd = HWND(hwnd_val as *mut _);
@@ -81,11 +118,12 @@ impl HotkeyDaemon {
         let inner = Arc::clone(&self.inner);
         let running = Arc::clone(&self.running);
         let thread_hwnd = Arc::clone(&self.thread_hwnd);
+        let callback = self.state_callback.lock().clone();
 
         running.store(true, Ordering::Relaxed);
 
         let handle = thread::spawn(move || {
-            Self::daemon_thread(inner, running, thread_hwnd);
+            Self::daemon_thread(inner, running, thread_hwnd, callback);
         });
 
         *self.thread_handle.lock() = Some(handle);
@@ -124,6 +162,7 @@ impl HotkeyDaemon {
         inner: Arc<Mutex<DaemonInner>>,
         running: Arc<AtomicBool>,
         thread_hwnd_slot: Arc<AtomicIsize>,
+        state_callback: Option<StateCallback>,
     ) {
         // Create a message-only window for receiving messages
         let hwnd = Self::create_message_window();
@@ -146,7 +185,7 @@ impl HotkeyDaemon {
         };
 
         let mut hotkey_service = HotkeyService::new(hwnd);
-        let macro_runner = MacroRunner::new(Arc::clone(&repo));
+        let macro_runner = MacroRunner::with_callback(Arc::clone(&repo), state_callback);
         let recorder = RecorderService::new();
 
         // Register hotkeys from config
@@ -189,11 +228,16 @@ impl HotkeyDaemon {
                                 }
                             };
 
+                            // Stop all active macros and reset toggle states before
+                            // tearing down the hook — ensures MacroRunner state stays
+                            // consistent with the new HotkeyService state.
+                            macro_runner.stop_all();
+
                             // Re-register hotkeys
                             hotkey_service.unregister_all();
                             Self::register_hotkeys_from_repo(&mut hotkey_service, &new_repo);
 
-                            // Hot-swap repo without losing toggle states
+                            // Hot-swap repo
                             macro_runner.update_repo(new_repo);
 
                             log::info!("Hotkey daemon reloaded config");
@@ -235,6 +279,13 @@ impl HotkeyDaemon {
                 // Check if we should stop (in case WM_DAEMON_STOP was missed)
                 if !running.load(Ordering::Relaxed) {
                     break;
+                }
+
+                // Periodically verify the LL hook is still alive
+                if hotkey_service.ensure_hook_alive() {
+                    // Hook was reinstalled — reset MacroRunner state since we
+                    // may have missed key-up events while the hook was dead.
+                    macro_runner.stop_all();
                 }
             }
 

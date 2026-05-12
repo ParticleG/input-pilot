@@ -241,6 +241,7 @@ function remove(hotkey: HotkeyBinding) {
       v-else
       :rows="rows"
       :columns="[
+        { name: 'status', label: 'Status', field: 'id', align: 'center', style: 'width: 60px' },
         { name: 'description', label: 'Description', field: 'description', align: 'left', sortable: true },
         { name: 'keys', label: 'Keys', field: (row: HotkeyBinding) => keyComboLabel(row.modifiers, row.virtual_key), align: 'left' },
         { name: 'action', label: 'Action', field: 'action', align: 'left', sortable: true },
@@ -253,6 +254,19 @@ function remove(hotkey: HotkeyBinding) {
       flat
       bordered
     >
+      <template #body-cell-status="props">
+        <q-td :props="props">
+          <q-icon
+            :name="app.hotkeyStates[(props.row as HotkeyBinding).id] ? 'fiber_manual_record' : 'radio_button_unchecked'"
+            :color="app.hotkeyStates[(props.row as HotkeyBinding).id] ? 'positive' : 'grey'"
+            size="sm"
+          >
+            <q-tooltip>
+              {{ app.hotkeyStates[(props.row as HotkeyBinding).id] ? 'Active' : 'Idle' }}
+            </q-tooltip>
+          </q-icon>
+        </q-td>
+      </template>
       <template #body-cell-actions="props">
         <q-td :props="props">
           <q-btn flat round icon="edit" color="primary" @click="openEdit(props.row as HotkeyBinding)">

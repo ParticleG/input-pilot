@@ -23,16 +23,33 @@ enum Command {
     Shutdown,
 }
 
+/// Event emitted when a hotkey execution state changes.
+#[derive(Clone, serde::Serialize)]
+pub struct HotkeyStateEvent {
+    pub id: i32,
+    pub active: bool,
+    pub description: String,
+    pub trigger_mode: String,
+}
+
+/// Callback type for hotkey state change notifications.
+pub type StateCallback = Arc<dyn Fn(HotkeyStateEvent) + Send + Sync>;
+
 pub struct MacroRunner {
     sender: mpsc::Sender<Command>,
     worker: Option<thread::JoinHandle<()>>,
     toggle_states: Arc<Mutex<HashMap<i32, bool>>>,
     active_tasks: Arc<Mutex<HashMap<i32, Arc<AtomicBool>>>>,
     repo: Arc<Mutex<Arc<MacroRepository>>>,
+    on_state_change: Option<StateCallback>,
 }
 
 impl MacroRunner {
     pub fn new(repo: Arc<MacroRepository>) -> Self {
+        Self::with_callback(repo, None)
+    }
+
+    pub fn with_callback(repo: Arc<MacroRepository>, callback: Option<StateCallback>) -> Self {
         let (sender, receiver) = mpsc::channel();
         let toggle_states = Arc::new(Mutex::new(HashMap::new()));
         let active_tasks = Arc::new(Mutex::new(HashMap::new()));
@@ -40,9 +57,10 @@ impl MacroRunner {
 
         let active_tasks_clone = Arc::clone(&active_tasks);
         let repo_clone = Arc::clone(&repo_shared);
+        let cb_clone = callback.clone();
 
         let worker = thread::spawn(move || {
-            Self::worker_loop(receiver, repo_clone, active_tasks_clone);
+            Self::worker_loop(receiver, repo_clone, active_tasks_clone, cb_clone);
         });
 
         Self {
@@ -51,6 +69,7 @@ impl MacroRunner {
             toggle_states,
             active_tasks,
             repo: repo_shared,
+            on_state_change: callback,
         }
     }
 
@@ -65,10 +84,22 @@ impl MacroRunner {
         self.toggle_states.lock().clear();
     }
 
+    fn emit_state(&self, hotkey: &HotkeyBinding, active: bool) {
+        if let Some(cb) = &self.on_state_change {
+            cb(HotkeyStateEvent {
+                id: hotkey.id,
+                active,
+                description: hotkey.description.clone(),
+                trigger_mode: format!("{:?}", hotkey.trigger_mode),
+            });
+        }
+    }
+
     pub fn on_hotkey_down(&self, hotkey: &HotkeyBinding) {
         match hotkey.trigger_mode {
             TriggerMode::Once => {
                 log::info!("[MacroRunner] Once hotkey {} triggered", hotkey.id);
+                self.emit_state(hotkey, true);
                 let _ = self.sender.send(Command::Start(hotkey.id, hotkey.clone()));
             }
             TriggerMode::Toggle => {
@@ -78,13 +109,16 @@ impl MacroRunner {
                 if is_active {
                     let _ = self.sender.send(Command::Stop(hotkey.id));
                     states.insert(hotkey.id, false);
+                    self.emit_state(hotkey, false);
                 } else {
                     let _ = self.sender.send(Command::Start(hotkey.id, hotkey.clone()));
                     states.insert(hotkey.id, true);
+                    self.emit_state(hotkey, true);
                 }
             }
             TriggerMode::Hold | TriggerMode::Phased => {
                 log::info!("[MacroRunner] Hold/Phased hotkey {} down", hotkey.id);
+                self.emit_state(hotkey, true);
                 let _ = self.sender.send(Command::Start(hotkey.id, hotkey.clone()));
             }
         }
@@ -93,6 +127,7 @@ impl MacroRunner {
     pub fn on_hotkey_up(&self, hotkey: &HotkeyBinding) {
         match hotkey.trigger_mode {
             TriggerMode::Hold | TriggerMode::Phased => {
+                self.emit_state(hotkey, false);
                 let _ = self.sender.send(Command::Stop(hotkey.id));
             }
             _ => {}
@@ -103,6 +138,7 @@ impl MacroRunner {
         receiver: mpsc::Receiver<Command>,
         repo: Arc<Mutex<Arc<MacroRepository>>>,
         active_tasks: Arc<Mutex<HashMap<i32, Arc<AtomicBool>>>>,
+        on_state_change: Option<StateCallback>,
     ) {
         while let Ok(cmd) = receiver.recv() {
             match cmd {
@@ -117,9 +153,22 @@ impl MacroRunner {
 
                     let repo_snapshot = Arc::clone(&*repo.lock());
                     let cancel_clone = Arc::clone(&cancel_flag);
+                    let cb_clone = on_state_change.clone();
 
                     thread::spawn(move || {
                         Self::execute_hotkey(&repo_snapshot, &hotkey, cancel_clone);
+                        // Emit "finished" for Once mode (Toggle/Hold emit on user action)
+                        if hotkey.trigger_mode == TriggerMode::Once {
+                            if let Some(cb) = cb_clone {
+                                cb(HotkeyStateEvent {
+                                    id: hotkey.id,
+                                    active: false,
+                                    description: hotkey.description.clone(),
+                                    trigger_mode: format!("{:?}", hotkey.trigger_mode),
+                                });
+                            }
+                        }
+                        log::info!("[MacroRunner] Hotkey {} execution finished", id);
                     });
                 }
                 Command::Stop(id) => {
