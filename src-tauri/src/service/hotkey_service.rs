@@ -180,15 +180,22 @@ impl HotkeyService {
     }
 
     fn check_hotkey_match(&self, is_key_down: bool) {
-        let pressed = self.pressed_keys.lock();
+        let mut pressed = self.pressed_keys.lock();
+
+        // Synchronize modifier key state with actual physical state.
+        // LL hooks can miss key-up events during focus transitions (e.g. Alt+Tab
+        // leaves VK_MENU stuck in pressed_keys). Use GetAsyncKeyState to evict
+        // modifiers that are no longer physically held.
+        Self::sync_modifier_state(&mut pressed);
+
         let mut active = self.active_hotkeys.lock();
 
         for binding in &self.hook_bindings {
-            let modifiers_match = self.check_modifiers(&pressed, binding.modifiers);
             let key_match = pressed.contains(&binding.virtual_key);
+            let modifiers_match = Self::check_modifiers_static(&pressed, binding.modifiers);
             let is_active = active.contains(&binding.id);
 
-            if modifiers_match && key_match {
+            if key_match && modifiers_match {
                 if is_key_down && !is_active {
                     // Hotkey pressed
                     active.insert(binding.id);
@@ -203,7 +210,7 @@ impl HotkeyService {
                     }
                 }
             } else if is_active {
-                // Hotkey released
+                // Hotkey released (key up or modifier changed)
                 active.remove(&binding.id);
                 log::info!("[HotkeyService] Hotkey {} UP", binding.id);
                 unsafe {
@@ -218,7 +225,28 @@ impl HotkeyService {
         }
     }
 
-    fn check_modifiers(&self, pressed: &HashSet<u32>, modifiers: u32) -> bool {
+    /// Remove modifier keys from `pressed` if they are not physically held.
+    /// This fixes stale state caused by missed key-up events during focus changes.
+    fn sync_modifier_state(pressed: &mut HashSet<u32>) {
+        const MODIFIER_VKS: &[u32] = &[
+            VK_MENU.0 as u32, VK_LMENU.0 as u32, VK_RMENU.0 as u32,
+            VK_CONTROL.0 as u32, VK_LCONTROL.0 as u32, VK_RCONTROL.0 as u32,
+            VK_SHIFT.0 as u32, VK_LSHIFT.0 as u32, VK_RSHIFT.0 as u32,
+            VK_LWIN.0 as u32, VK_RWIN.0 as u32,
+        ];
+
+        for &vk in MODIFIER_VKS {
+            if pressed.contains(&vk) {
+                let state = unsafe { GetAsyncKeyState(vk as i32) };
+                // High bit set means key is currently down
+                if state & (0x8000u16 as i16) == 0 {
+                    pressed.remove(&vk);
+                }
+            }
+        }
+    }
+
+    fn check_modifiers_static(pressed: &HashSet<u32>, modifiers: u32) -> bool {
         let needs_alt = (modifiers & MOD_ALT.0) != 0;
         let needs_ctrl = (modifiers & MOD_CONTROL.0) != 0;
         let needs_shift = (modifiers & MOD_SHIFT.0) != 0;
