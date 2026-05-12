@@ -2,12 +2,12 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "input-pilot",
   "version": "0.1.0",
-  "identifier": "com.tauri.dev",
+  "identifier": "org.studio26f.input-pilot",
   "build": {
     "frontendDist": "../dist/spa",
     "devUrl": "http://localhost:9000",
-    "beforeDevCommand": "bun dev",
-    "beforeBuildCommand": "bun build"
+    "beforeDevCommand": "bun spa-dev",
+    "beforeBuildCommand": "bun spa-build"
   },
   "app": {
     "windows": [

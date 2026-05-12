@@ -1,17 +1,16 @@
 {
   "name": "input-pilot",
   "version": "0.0.1",
+  "private": true,
   "description": "input-pilot is a Windows input automation app for sending keyboard and mouse actions to other applications",
-  "productName": "Input Pilot",
   "author": "ParticleG <particle_g@outlook.com>",
   "type": "module",
-  "private": true,
   "scripts": {
     "format": "oxfmt .",
     "lint": "eslint -c ./eslint.config.js \"./src*/**/*.{ts,js,cjs,mjs,vue}\"",
     "test": "echo \"No test specified\" && exit 0",
-    "dev": "quasar dev",
-    "build": "quasar build",
+    "spa-dev": "quasar dev -m spa",
+    "spa-build": "quasar build -m spa",
     "postinstall": "quasar prepare",
     "tauri-dev": "tauri dev",
     "tauri-build": "tauri build"
@@ -46,7 +45,8 @@
   "engines": {
     "node": "^28 || ^26 || ^24 || ^22.12",
     "npm": ">= 6.13.4",
-    "yarn": ">= 1.21.1",
-    "pnpm": ">= 10.0.0"
-  }
+    "pnpm": ">= 10.0.0",
+    "yarn": ">= 1.21.1"
+  },
+  "productName": "Input Pilot"
 }
