@@ -1,5 +1,4 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::HashSet;
 use parking_lot::Mutex;
 use windows::Win32::Foundation::*;
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
@@ -13,6 +12,7 @@ pub const WM_HOTKEY_UP: u32 = 0x8000 + 2;   // WM_APP + 2
 
 const NULL_HOOK: HHOOK = HHOOK(std::ptr::null_mut());
 
+#[allow(dead_code)]
 struct HookBinding {
     id: i32,
     modifiers: u32,
@@ -59,6 +59,8 @@ impl HotkeyService {
             }
         }
 
+        log::info!("[HotkeyService] Registering {} Once hotkeys, {} Hook hotkeys", once_hotkeys.len(), hook_hotkeys.len());
+
         // Register Once mode hotkeys with RegisterHotKey
         for hotkey in once_hotkeys {
             unsafe {
@@ -95,10 +97,11 @@ impl HotkeyService {
                 ).unwrap_or(NULL_HOOK);
 
                 if self.hook.0.is_null() {
-                    log::error!("Failed to install keyboard hook");
+                    log::error!("[HotkeyService] Failed to install keyboard hook!");
                     HOTKEY_INSTANCE = None;
                     return false;
                 }
+                log::info!("[HotkeyService] LL keyboard hook installed successfully");
             }
         }
 
@@ -150,6 +153,10 @@ impl HotkeyService {
                 let is_up = wparam.0 as u32 == WM_KEYUP || wparam.0 as u32 == WM_SYSKEYUP;
 
                 if is_down {
+                    let dominated_vk = instance.hook_bindings.iter().any(|b| b.virtual_key == kb.vkCode);
+                    if dominated_vk {
+                        log::info!("[HotkeyService] Hook key down: vk={}", kb.vkCode);
+                    }
                     instance.pressed_keys.lock().insert(kb.vkCode);
                     instance.check_hotkey_match(true);
                 } else if is_up {
@@ -174,6 +181,7 @@ impl HotkeyService {
                 if is_key_down && !is_active {
                     // Hotkey pressed
                     active.insert(binding.id);
+                    log::info!("[HotkeyService] Hotkey {} DOWN (vk={}, mods={})", binding.id, binding.virtual_key, binding.modifiers);
                     unsafe {
                         let _ = PostMessageW(
                             Some(self.target_hwnd),
@@ -186,6 +194,7 @@ impl HotkeyService {
             } else if is_active {
                 // Hotkey released
                 active.remove(&binding.id);
+                log::info!("[HotkeyService] Hotkey {} UP", binding.id);
                 unsafe {
                     let _ = PostMessageW(
                         Some(self.target_hwnd),

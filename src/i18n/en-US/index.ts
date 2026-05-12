@@ -7,6 +7,7 @@ export default {
         dashboard: 'Dashboard',
         macros: 'Macros',
         targets: 'Targets',
+        hotkeys: 'Hotkeys',
         windows: 'Windows',
       },
       stack: {

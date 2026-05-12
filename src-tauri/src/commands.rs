@@ -10,17 +10,20 @@ use crate::service::macro_executor;
 use crate::service::macro_parser;
 use crate::service::macro_repository::MacroRepository;
 use crate::service::macro_serialization;
+use crate::service::hotkey_daemon::HotkeyDaemon;
 use crate::win32::window_finder;
 
 /// Managed state for the application
 pub struct AppState {
     pub repository: Mutex<Option<MacroRepository>>,
+    pub daemon: HotkeyDaemon,
 }
 
 impl AppState {
     pub fn new() -> Self {
         Self {
             repository: Mutex::new(None),
+            daemon: HotkeyDaemon::new(),
         }
     }
 }
@@ -38,6 +41,9 @@ pub fn load_config_from_file(path: String) -> Result<AppConfig, String> {
 /// Apply an AppConfig directly (from frontend Pinia store)
 #[tauri::command]
 pub fn apply_config(state: State<'_, AppState>, config: AppConfig) -> Result<(), String> {
+    // Update the daemon with the new config (triggers hotkey re-registration if running)
+    state.daemon.update_config(config.clone());
+
     let repo = MacroRepository::new(config);
     *state.repository.lock() = Some(repo);
     Ok(())
@@ -142,4 +148,27 @@ pub fn parse_macro_file(file_path: String) -> Result<MacroSequence, String> {
 #[tauri::command]
 pub fn serialize_macro_to_text(macro_seq: MacroSequence) -> Vec<String> {
     macro_serialization::serialize_macro(&macro_seq)
+}
+
+// ---------------------------------------------------------------------------
+// Hotkey daemon commands
+// ---------------------------------------------------------------------------
+
+/// Start the hotkey daemon (registers hotkeys, begins listening)
+#[tauri::command]
+pub fn start_hotkey_daemon(state: State<'_, AppState>) -> Result<bool, String> {
+    Ok(state.daemon.start())
+}
+
+/// Stop the hotkey daemon
+#[tauri::command]
+pub fn stop_hotkey_daemon(state: State<'_, AppState>) -> Result<(), String> {
+    state.daemon.stop();
+    Ok(())
+}
+
+/// Check if the hotkey daemon is running
+#[tauri::command]
+pub fn is_hotkey_daemon_running(state: State<'_, AppState>) -> bool {
+    state.daemon.is_running()
 }

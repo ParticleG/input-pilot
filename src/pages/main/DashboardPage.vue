@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { useAppStore } from 'stores/app';
 import { useQuasar } from 'quasar';
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 
 const $q = useQuasar();
 const app = useAppStore();
 
 const importPath = ref('config/app.ini');
 const showImportDialog = ref(false);
+
+onMounted(async () => {
+  await app.refreshDaemonStatus();
+});
 
 async function importConfig() {
   try {
@@ -38,10 +42,55 @@ async function playMacro(name: string) {
     timeout: 2000,
   });
 }
+
+async function toggleDaemon() {
+  if (app.daemonRunning) {
+    await app.stopDaemon();
+    $q.notify({
+      message: 'Hotkey daemon stopped',
+      color: 'warning',
+      position: 'bottom-right',
+      timeout: 2000,
+    });
+  } else {
+    const ok = await app.startDaemon();
+    $q.notify({
+      message: ok ? 'Hotkey daemon started' : 'Failed to start daemon',
+      color: ok ? 'positive' : 'negative',
+      position: 'bottom-right',
+      timeout: 2000,
+    });
+  }
+}
 </script>
 
 <template>
   <q-page class="q-pa-md column q-gutter-y-md">
+    <!-- Hotkey Daemon -->
+    <q-card flat bordered>
+      <q-card-section>
+        <div class="row items-center q-gutter-sm">
+          <div class="text-h6 col">Hotkey Daemon</div>
+          <q-chip
+            :color="app.daemonRunning ? 'positive' : 'grey'"
+            text-color="white"
+            dense
+            :label="app.daemonRunning ? 'Running' : 'Stopped'"
+          />
+          <q-btn
+            :color="app.daemonRunning ? 'negative' : 'positive'"
+            :icon="app.daemonRunning ? 'stop' : 'play_arrow'"
+            :label="app.daemonRunning ? 'Stop' : 'Start'"
+            flat
+            @click="toggleDaemon"
+          />
+        </div>
+        <div class="text-caption text-grey q-mt-xs">
+          When running, registered hotkeys are active system-wide even if the window is hidden.
+        </div>
+      </q-card-section>
+    </q-card>
+
     <!-- Config toolbar -->
     <q-card flat bordered>
       <q-card-section>

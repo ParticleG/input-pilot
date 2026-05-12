@@ -6,3 +6,4 @@ pub mod macro_executor;
 pub mod macro_runner;
 pub mod recorder_service;
 pub mod hotkey_service;
+pub mod hotkey_daemon;

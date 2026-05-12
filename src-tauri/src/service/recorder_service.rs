@@ -3,7 +3,6 @@ use std::time::Instant;
 use parking_lot::Mutex;
 use windows::Win32::Foundation::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 
 use crate::model::dispatch_mode::DispatchMode;
@@ -25,6 +24,7 @@ struct RecordedEvent {
 }
 
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 enum RecordedEventType {
     Delay,
     KeyDown,

@@ -29,6 +29,12 @@ export const MAIN_NAVIGATIONS: Navigation[] = [
     route: 'targets',
   },
   {
+    label: i18n('main.hotkeys'),
+    icon: 'keyboard',
+    available: true,
+    route: 'hotkeys',
+  },
+  {
     label: i18n('main.windows'),
     icon: 'window',
     available: true,

@@ -42,6 +42,15 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
+        name: 'hotkeys',
+        path: 'hotkeys',
+        components: {
+          default: () => import('pages/main/HotkeysPage.vue'),
+          leftDrawer: () => import('layouts/drawers/MainLeftDrawer.vue'),
+          header: () => import('layouts/headers/MainHeader.vue'),
+        },
+      },
+      {
         name: 'windows',
         path: 'windows',
         components: {

@@ -38,6 +38,7 @@ struct ObjectDirectoryInformation {
     type_name: UnicodeString,
 }
 
+#[allow(dead_code)]
 extern "system" {
     fn NtOpenDirectoryObject(
         directory_handle: *mut HANDLE,

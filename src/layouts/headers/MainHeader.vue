@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import { getCurrentWindow } from '@tauri-apps/api/window';
+
+import LocaleButton from 'components/LocaleButton.vue';
 import ThemeButton from 'components/ThemeButton.vue';
 
 import { bus } from 'boot/bus';
 import { i18nSubPath } from 'src/utils/common';
-import LocaleButton from 'components/LocaleButton.vue';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 
 const i18n = i18nSubPath('layouts.headers.MainHeader');
 
@@ -16,7 +17,7 @@ const closeApp = () => appWindow.close();
 
 <template>
   <q-header bordered class="bg-primary text-white">
-    <q-bar class="q-electron-drag">
+    <q-bar v-if="$q.platform.is.desktop" data-tauri-drag-region>
       <q-icon name="map" class="q-electron-drag--exception" />
       <div>
         {{ i18n('labels.title') }}

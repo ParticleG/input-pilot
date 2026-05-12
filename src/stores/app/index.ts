@@ -20,6 +20,7 @@ export const useAppStore = defineStore(
     const windows = ref<WindowMatch[]>([]);
     const loading = ref(false);
     const error = ref<string | null>(null);
+    const daemonRunning = ref(false);
 
     // -----------------------------------------------------------------------
     // Computed
@@ -179,6 +180,37 @@ export const useAppStore = defineStore(
       }
     }
 
+    // -----------------------------------------------------------------------
+    // Hotkey daemon control
+    // -----------------------------------------------------------------------
+    async function startDaemon(): Promise<boolean> {
+      try {
+        const result = await invoke<boolean>('start_hotkey_daemon');
+        daemonRunning.value = result;
+        return result;
+      } catch (e) {
+        error.value = String(e);
+        return false;
+      }
+    }
+
+    async function stopDaemon(): Promise<void> {
+      try {
+        await invoke('stop_hotkey_daemon');
+        daemonRunning.value = false;
+      } catch (e) {
+        error.value = String(e);
+      }
+    }
+
+    async function refreshDaemonStatus(): Promise<void> {
+      try {
+        daemonRunning.value = await invoke<boolean>('is_hotkey_daemon_running');
+      } catch (e) {
+        error.value = String(e);
+      }
+    }
+
     return {
       // State
       targets,
@@ -189,6 +221,7 @@ export const useAppStore = defineStore(
       loading,
       error,
       syncing,
+      daemonRunning,
       // Computed
       targetCount,
       macroCount,
@@ -206,6 +239,9 @@ export const useAppStore = defineStore(
       findWindows,
       playMacro,
       playMacroDirect,
+      startDaemon,
+      stopDaemon,
+      refreshDaemonStatus,
     };
   },
   {

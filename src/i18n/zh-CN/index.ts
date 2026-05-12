@@ -8,6 +8,7 @@ export default {
         dashboard: '仪表盘',
         macros: '宏',
         targets: '目标',
+        hotkeys: '热键',
         windows: '窗口',
       },
       stack: {
